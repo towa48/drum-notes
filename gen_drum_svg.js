@@ -1,7 +1,8 @@
 // gen_drum_svg.js — рендер барабанного ритма из input.md в SVG нотный стан.
-// Запуск: node gen_drum_svg.js  ->  course3-drums.svg
+// Запуск: node gen_drum_svg.js  ->  output.svg
 //
-// Формат input.md: ритм в блоке ``` ... ```, строки вида:
+// Формат input.md: первая непустая строка файла — подпись картинки;
+// ритм в блоке ``` ... ```, строки вида:
 // HH | X . x . | X . X . | X . X . | X . X . |
 // SN | . . . . | X . . X | . . . . | X . . . |
 // BD | X . . . | . . . . | . . X . | . . . . |
@@ -14,10 +15,13 @@ const OUT = path.join(__dirname, "output.svg");
 const INPUT = path.join(__dirname, "input.md");
 
 // ---------- ввод: читаем ритм из блока ``` ... ``` в input.md ----------
-function loadPattern(file) {
+function loadInput(file) {
   const md = fs.readFileSync(file, "utf8");
   const m = md.match(/```[a-z]*\s*\n([\s\S]*?)```/);
   if (!m) throw new Error("в input.md не найден блок ``` ... ``` с ритмом");
+  // подпись картинки — первая непустая строка вне блока ``` ... ```
+  const outside = md.slice(0, m.index) + "\n" + md.slice(m.index + m[0].length);
+  const title = outside.split("\n").map(s => s.trim().replace(/^#+\s*/, "")).find(Boolean) || "";
   const pat = {};
   for (const raw of m[1].split("\n")) {
     const lm = raw.trim().match(/^([A-Za-z]{2})\s*\|(.+)$/);
@@ -32,11 +36,11 @@ function loadPattern(file) {
       pat[key] = new Array(16).fill(0);
     }
   }
-  return pat;
+  return { pat, title };
 }
 
-const PAT = loadPattern(INPUT);  // 1 = удар, 0 = пауза
-const N = PAT.HH.length;         // число шагов (16 = такт 4/4 шестнадцатыми)
+const { pat: PAT, title: TITLE } = loadInput(INPUT);  // PAT: 1 = удар, 0 = пауза
+const N = PAT.HH.length;  // число шагов (16 = такт 4/4 шестнадцатыми)
 
 // ---------- геометрия ----------
 const S = 11.0;                    // расстояние между линейками стана
@@ -163,7 +167,7 @@ function renderVoice(v) {
 
 // ---------- сборка ----------
 add(`<rect width="${W}" height="${H}" fill="#fff"/>`);
-text(W / 2, 34, "Ритм третьего куплета — барабаны, 4/4", 16, "#000", "middle", true);
+if (TITLE) text(W / 2, 34, TITLE, 16, "#000", "middle", true);
 
 const subLabels = ["", "e", "&", "a"];
 for (let i = 0; i < N; i++) {
@@ -186,14 +190,7 @@ for (const top of STAVES) {                          // два стана
   text(64, top + 3.7 * S, "4", 23, "#000", "middle", true);
 }
 
-// подписи станов
-text(25, TOP1 - 8, "Хай-хэт", 11.5, "#333", "start", true, "Arial, sans-serif");
-text(25, TOP2 - 8, "Малый + бас", 11.5, "#333", "start", true, "Arial, sans-serif");
-
 for (const v of VOICES) renderVoice(v);
-
-text(25, H - 16, "× = хай-хэт    ● = малый барабан    ● = бас-барабан (внизу стана)",
-     11, "#333", "start", false, "Arial, sans-serif");
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${parts.join("\n")}\n</svg>\n`;
 fs.writeFileSync(OUT, svg, "utf8");
