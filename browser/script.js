@@ -17,6 +17,7 @@
   const BEAMS16 = false;             // true = шестнадцатые с вязками, false = четвертые
 
   const X0 = 100.0, DX = 34.0;       // x первой шестнадцатой и шаг сетки
+  const TRIP_DX = 18.0;              // шаг внутри триолей/секстолей (ноты почти вплотную)
   const SYS_DY = 140.0;              // базовое расстояние между станами (чтобы штили не пересекались)
   const CAP_GAP = 50.0;              // дополнительный отступ под заголовок стана
 
@@ -94,8 +95,18 @@
   // ---------- генерация SVG из текста нотации ----------
   function generateSVG(md) {
     const { pats, title } = parseInput(md);
-    const N = Math.max(...pats.map(p => p.HH.length));  // число шагов (16 = такт 4/4)
-    const X_END = X0 + (N - 1) * DX + 42;
+    // x-координаты шагов каждого стана: внутри триолей/секстолей шаг меньше (TRIP_DX)
+    const xsByPat = pats.map(pat => {
+      const xs = new Array(pat.HH.length);
+      let x = X0;
+      for (const u of pat._units) {
+        const dx = u.num ? TRIP_DX : DX;
+        for (let s = 0; s < u.len; s++) xs[u.start + s] = x + s * dx;
+        x += u.len * dx;
+      }
+      return xs;
+    });
+    const X_END = Math.max(...xsByPat.map(xs => xs[xs.length - 1])) + 42;
     // верх каждого стана: если у стана есть заголовок, перед ним отступ больше
     const tops = [TOP1];
     for (let k = 1; k < pats.length; k++) tops.push(tops[k - 1] + SYS_DY + (pats[k]._caption ? CAP_GAP : 0));
@@ -150,28 +161,28 @@
       }
     }
 
-    function renderGroup(vs, pat) {  // голоса с общим направлением штилей; совпадающие ноты делят штиль
+    function renderGroup(vs, pat, xs) {  // голоса с общим направлением штилей; совпадающие ноты делят штиль
       const up = vs[0].up;
       const beamsAlways = vs.some(v => v.beams ?? BEAMS16);  // вязки всегда
       const beamsMulti = vs.some(v => v.beamMulti);          // вязки, только если в группе > 1 ноты
       const singleBeam = vs.every(v => v.singleBeam);
       const topY = Math.min(...vs.map(v => v.y));   // самая высокая головка группы
       const tip = up ? topY - STEM : topY + STEM;   // общий конец штилей
-      const sx = i => X0 + i * DX + (up ? HEAD_DX : -HEAD_DX);
+      const sx = i => xs[i] + (up ? HEAD_DX : -HEAD_DX);
 
       for (const u of pat._units) {  // юнит: { start, len, num } — num: 0 доля, 3 триоль, 6 две триоли
         const idx = [];
         for (let i = u.start; i < u.start + u.len; i++) if (vs.some(v => pat[v.key][i])) idx.push(i);
 
         if (idx.length === 0) {  // пустая доля -> четвертная пауза
-          if (SHOW_RESTS) rest4(X0 + (u.start + (u.len - 1) / 2) * DX, vs[0].restY);
+          if (SHOW_RESTS) rest4((xs[u.start] + xs[u.start + u.len - 1]) / 2, vs[0].restY);
           continue;
         }
 
         for (const i of idx) {  // головки + общий штиль
           const ys = [];
           for (const v of vs) if (pat[v.key][i]) {
-            head(X0 + i * DX, v.y, v.xhead, v.hollow);
+            head(xs[i], v.y, v.xhead, v.hollow);
             ys.push(v.y);
           }
           const y0 = up ? Math.max(...ys) - 3 : Math.min(...ys) + 3;
@@ -217,13 +228,13 @@
 
         // шестнадцатые паузы на пустых позициях группы
         if (SHOW_RESTS) for (let i = u.start; i < u.start + u.len; i++) {
-          if (!vs.some(v => pat[v.key][i])) rest16(X0 + i * DX + vs[0].restDx, vs[0].restY);
+          if (!vs.some(v => pat[v.key][i])) rest16(xs[i] + vs[0].restDx, vs[0].restY);
         }
       }
     }
 
     // один стан: линейки, ключ, размер (только у первого), голоса
-    function renderSystem(pat, top, timeSig) {
+    function renderSystem(pat, top, timeSig, xs) {
       // заголовок стана — текст перед его блоком; такой же стиль, как у заголовка картинки
       if (!timeSig && pat._caption) text(W / 2, top - 62, pat._caption, 16, "#000", "middle", true);
       for (let i = 0; i < 5; i++) line(25, top + i * S, X_END, top + i * S, 1.0);
@@ -241,8 +252,8 @@
       }
 
       const vs = VOICE_DEFS.map(v => ({ ...v, y: top + v.dy, restY: top + v.restDy }));
-      renderGroup([vs[0], vs[1]], pat);  // HH + SN: общие штили при совпадении
-      renderGroup([vs[2]], pat);         // BD: штили вниз
+      renderGroup([vs[0], vs[1]], pat, xs);  // HH + SN: общие штили при совпадении
+      renderGroup([vs[2]], pat, xs);         // BD: штили вниз
     }
 
     // ---------- сборка ----------
@@ -257,13 +268,13 @@
       for (let s = 0; s < u.len; s++) {
         const pos = s % beatLen;
         const lab = pos === 0 ? String(beatNo++) : (beatLen === 3 ? sub3[pos] : sub4[pos]);
-        text(X0 + (li + s) * DX, 72, lab, 10.5, "#555", "middle", pos === 0, "Arial, sans-serif");
+        text(xsByPat[0][li + s], 72, lab, 10.5, "#555", "middle", pos === 0, "Arial, sans-serif");
       }
       li += u.len;
     }
 
     // каждый блок ``` — отдельный стан; 4/4 только на первом
-    pats.forEach((pat, k) => renderSystem(pat, tops[k], k === 0));
+    pats.forEach((pat, k) => renderSystem(pat, tops[k], k === 0, xsByPat[k]));
 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${parts.join("\n")}\n</svg>\n`;
   }
