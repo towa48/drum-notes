@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>drum-notes — генератор нотного стана</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 24px auto; padding: 0 16px; color: #222; }
+    h1 { font-size: 22px; margin-bottom: 6px; }
+    h2 { font-size: 16px; margin-bottom: 4px; }
+    ul { margin-top: 4px; }
+    textarea { width: 100%; box-sizing: border-box; font-family: Consolas, "Courier New", monospace; font-size: 13px; padding: 8px; }
+    button { margin: 10px 0; padding: 8px 18px; font-size: 14px; cursor: pointer; }
+    #out { overflow-x: auto; border: 1px solid #ddd; padding: 8px; background: #fafafa; }
+    code { background: #f0f0f0; padding: 1px 4px; }
+    .err { color: #b00; }
+  </style>
+</head>
+<body>
+  <h1>drum-notes — генератор нотного стана для барабанов</h1>
+  <p>Строит классический нотный стан (SVG) по текстовой нотации:
+     <code>X</code> — удар, <code>.</code> — пауза, группа из 4 символов — доля (<code>1 e &amp; a</code>).</p>
+
+  <h2>Инструкция</h2>
+  <ul>
+    <li>Первая непустая строка в поле ввода — подпись картинки.</li>
+    <li>Ритм пишется в блоке <code>``` ... ```</code>, по строке на инструмент:
+        <code>HH</code> — хай-хэт, <code>SN</code> — малый барабан, <code>BD</code> — бас-барабан.</li>
+    <li>Ячейки разделяются <code>|</code>; любой символ кроме <code>.</code> = удар; 16 шагов = такт 4/4 шестнадцатыми.</li>
+    <li>Каждый следующий блок <code>```</code> рисуется отдельным станом ниже (размер 4/4 — только на первом).</li>
+    <li>Нажмите «Сгенерировать», чтобы построить нотный стан.</li>
+  </ul>
+
+  <textarea id="input" rows="16" spellcheck="false">Ритм третьего куплета - барабаны
+```
+     | 1 e &amp; a | 2 e &amp; a | 3 e &amp; a | 4 e &amp; a |
+HH   | X . x . | X . X . | X . X . | X . X . |
+SN   | . . . . | X . . X | . . . . | X . . . |
+BD   | X . . . | . . . . | . . X . | . . . . |
+```
+```
+     | 1 e &amp; a | 2 e &amp; a | 3 e &amp; a | 4 e &amp; a |
+HH   | . . . . | . . . . | . . . . | . . . . |
+SN   | X X . . | X X X X | X X . . | X X X X |
+BD   | . . X X | . . . . | . . X X | . . . . |
+```</textarea>
+  <br>
+  <button id="gen">Сгенерировать</button>
+  <div id="out"></div>
+
+  <script src="script.js"></script>
+  <script>
+    // Все подписки на события — здесь; общая логика — в script.js (window.DrumSVG).
+    const btn = document.getElementById("gen");
+    btn.addEventListener("click", () => {
+      const out = document.getElementById("out");
+      try {
+        out.innerHTML = DrumSVG.generateSVG(document.getElementById("input").value);
+      } catch (e) {
+        out.innerHTML = '<p class="err"></p>';
+        out.querySelector(".err").textContent = "Ошибка: " + e.message;
+      }
+    });
+    btn.click();  // сгенерировать пример при открытии страницы
+  </script>
+</body>
+</html>
