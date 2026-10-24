@@ -50,6 +50,7 @@ const STAVES = [TOP1, TOP2];
 const STEM = 3.5 * S;              // длина штиля (октава)
 
 const SHOW_RESTS = false;          // рисовать паузы (true/false)
+const BEAMS16 = false;             // true = шестнадцатые с вязками, false = четвертые
 
 const X0 = 100.0, DX = 34.0;       // x первой шестнадцатой и шаг сетки
 const X_END = X0 + (N - 1) * DX + 42;
@@ -60,9 +61,9 @@ const HEAD_DX = 4.4;
 
 // HH — на верхнем стане (штиль вверх, одна вязка), SN и BD — на нижнем
 const VOICES = [
-  { key: "HH", y: TOP1 - 0.5 * S, up: true,  xhead: true,  restY: TOP1 - 2.2 * S,  restDx: 0.0, singleBeam: true },
+  { key: "HH", y: TOP1 - 0.5 * S, up: true,  xhead: true,  beams: true, restY: TOP1 - 2.2 * S,  restDx: 0.0, singleBeam: true },
   { key: "SN", y: TOP2 + 1.5 * S, up: true,  xhead: false, restY: TOP2 + 0.55 * S, restDx: 3.5, singleBeam: true },
-  { key: "BD", y: TOP2 + 3.5 * S, up: false, xhead: false, restY: TOP2 + 5.5 * S,  restDx: 0.0 },
+  { key: "BD", y: TOP2 + 3.5 * S, up: false, xhead: false, hollow: true, restY: TOP2 + 5.5 * S,  restDx: 0.0 },
 ];
 
 const parts = [];
@@ -83,10 +84,12 @@ function text(x, y, s, size = 12, fill = "#000", anchor = "middle", bold = false
   add(`<text x="${f(x)}" y="${f(y)}" font-size="${size}" fill="${fill}" text-anchor="${anchor}" font-family="${family}"${b}>${s}</text>`);
 }
 
-function head(cx, cy, xhead) {
+function head(cx, cy, xhead, hollow) {
   if (xhead) {  // крестик для хэта
     line(cx - 4.3, cy - 4.3, cx + 4.3, cy + 4.3, 2.3, "round");
     line(cx - 4.3, cy + 4.3, cx + 4.3, cy - 4.3, 2.3, "round");
+  } else if (hollow) {  // половинная нота: незакрашенная головка
+    add(`<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="5.4" ry="3.9" transform="rotate(-16 ${f(cx)} ${f(cy)})" fill="#fff" stroke="#000" stroke-width="1.8"/>`);
   } else {
     add(`<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="5.4" ry="3.9" transform="rotate(-16 ${f(cx)} ${f(cy)})"/>`);
   }
@@ -127,32 +130,34 @@ function renderVoice(v) {
     }
 
     for (const i of idx) {  // головки + штили
-      head(X0 + i * DX, y, v.xhead);
+      head(X0 + i * DX, y, v.xhead, v.hollow);
       line(sx(i), y + (up ? -3 : 3), sx(i), tip, 1.5);
     }
 
-    if (idx.length === 1) {
-      flag16(sx(idx[0]), tip, up);
-    } else {
-      // основная (восьмая) вязка через всю долю
-      let sy2;
-      if (up) {
-        rect(sx(idx[0]), tip, sx(idx[idx.length - 1]) - sx(idx[0]), BEAM_H);
-        sy2 = tip + BEAM_H + BEAM_GAP;
+    if (v.beams ?? BEAMS16) {  // вязки/флажки (у HH singleBeam — одна вязка на долю); false = четвертые
+      if (idx.length === 1) {
+        flag16(sx(idx[0]), tip, up);
       } else {
-        rect(sx(idx[0]), tip - BEAM_H, sx(idx[idx.length - 1]) - sx(idx[0]), BEAM_H);
-        sy2 = tip - 2 * BEAM_H - BEAM_GAP;
-      }
-      // вторая (шестнадцатая) вязка: сегменты между соседними нотами, отростки к паузам
-      if (!v.singleBeam) {
-        for (let k = 0; k < idx.length; k++) {
-          const i = idx[k];
-          const leftC = k > 0 && idx[k - 1] === i - 1;
-          const rightC = k < idx.length - 1 && idx[k + 1] === i + 1;
-          if (rightC) rect(sx(i), sy2, sx(idx[k + 1]) - sx(i), BEAM_H);
-          if (!leftC && !rightC) {
-            if (k < idx.length - 1) rect(sx(i), sy2, 0.62 * DX, BEAM_H);
-            else rect(sx(i) - 0.62 * DX, sy2, 0.62 * DX, BEAM_H);
+        // основная (восьмая) вязка через всю долю
+        let sy2;
+        if (up) {
+          rect(sx(idx[0]), tip, sx(idx[idx.length - 1]) - sx(idx[0]), BEAM_H);
+          sy2 = tip + BEAM_H + BEAM_GAP;
+        } else {
+          rect(sx(idx[0]), tip - BEAM_H, sx(idx[idx.length - 1]) - sx(idx[0]), BEAM_H);
+          sy2 = tip - 2 * BEAM_H - BEAM_GAP;
+        }
+        // вторая (шестнадцатая) вязка: сегменты между соседними нотами, отростки к паузам
+        if (!v.singleBeam) {
+          for (let k = 0; k < idx.length; k++) {
+            const i = idx[k];
+            const leftC = k > 0 && idx[k - 1] === i - 1;
+            const rightC = k < idx.length - 1 && idx[k + 1] === i + 1;
+            if (rightC) rect(sx(i), sy2, sx(idx[k + 1]) - sx(i), BEAM_H);
+            if (!leftC && !rightC) {
+              if (k < idx.length - 1) rect(sx(i), sy2, 0.62 * DX, BEAM_H);
+              else rect(sx(i) - 0.62 * DX, sy2, 0.62 * DX, BEAM_H);
+            }
           }
         }
       }
