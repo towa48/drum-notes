@@ -44,9 +44,8 @@ const N = PAT.HH.length;  // число шагов (16 = такт 4/4 шестн
 
 // ---------- геометрия ----------
 const S = 11.0;                    // расстояние между линейками стана
-const TOP1 = 150.0;                // верхний стан: хай-хэт
-const TOP2 = 226.0;                // нижний стан: малый + бас
-const STAVES = [TOP1, TOP2];
+const TOP1 = 150.0;                // единый нотный стан
+const STAVES = [TOP1];
 const STEM = 3.5 * S;              // длина штиля (октава)
 
 const SHOW_RESTS = false;          // рисовать паузы (true/false)
@@ -54,16 +53,16 @@ const BEAMS16 = false;             // true = шестнадцатые с вяз�
 
 const X0 = 100.0, DX = 34.0;       // x первой шестнадцатой и шаг сетки
 const X_END = X0 + (N - 1) * DX + 42;
-const W = X_END + 24, H = 340.0;
+const W = X_END + 24, H = 260.0;
 
 const BEAM_H = 4.6, BEAM_GAP = 2.0;
 const HEAD_DX = 4.4;
 
-// HH — на верхнем стане (штиль вверх, одна вязка), SN и BD — на нижнем
+// HH и SN — штили вверх (при совпадении общие), BD — штили вниз
 const VOICES = [
   { key: "HH", y: TOP1 - 0.5 * S, up: true,  xhead: true,  beams: true, restY: TOP1 - 2.2 * S,  restDx: 0.0, singleBeam: true },
-  { key: "SN", y: TOP2 + 1.5 * S, up: true,  xhead: false, restY: TOP2 + 0.55 * S, restDx: 3.5, singleBeam: true },
-  { key: "BD", y: TOP2 + 3.5 * S, up: false, xhead: false, hollow: true, restY: TOP2 + 5.5 * S,  restDx: 0.0 },
+  { key: "SN", y: TOP1 + 1.5 * S, up: true,  xhead: false, restY: TOP1 + 0.55 * S, restDx: 3.5, singleBeam: true },
+  { key: "BD", y: TOP1 + 3.5 * S, up: false, xhead: false, hollow: true, restY: TOP1 + 5.5 * S,  restDx: 0.0 },
 ];
 
 const parts = [];
@@ -114,27 +113,34 @@ function flag16(x, y, up) {  // двойной флажок для одинок�
   }
 }
 
-function renderVoice(v) {
-  const pat = PAT[v.key];
-  const y = v.y, up = v.up;
-  const tip = up ? y - STEM : y + STEM;
+function renderGroup(vs) {  // голоса с общим направлением штилей; совпадающие ноты делят штиль
+  const up = vs[0].up;
+  const beams = vs.some(v => v.beams ?? BEAMS16);
+  const singleBeam = vs.every(v => v.singleBeam);
+  const topY = Math.min(...vs.map(v => v.y));   // самая высокая головка группы
+  const tip = up ? topY - STEM : topY + STEM;   // общий конец штилей
   const sx = i => X0 + i * DX + (up ? HEAD_DX : -HEAD_DX);
 
   for (let beat = 0; beat < N / 4; beat++) {
     const idx = [];
-    for (let i = beat * 4; i < beat * 4 + 4; i++) if (pat[i]) idx.push(i);
+    for (let i = beat * 4; i < beat * 4 + 4; i++) if (vs.some(v => PAT[v.key][i])) idx.push(i);
 
     if (idx.length === 0) {  // пустая доля -> четвертная пауза
-      if (SHOW_RESTS) rest4(X0 + (beat * 4 + 1.5) * DX, v.restY);
+      if (SHOW_RESTS) rest4(X0 + (beat * 4 + 1.5) * DX, vs[0].restY);
       continue;
     }
 
-    for (const i of idx) {  // головки + штили
-      head(X0 + i * DX, y, v.xhead, v.hollow);
-      line(sx(i), y + (up ? -3 : 3), sx(i), tip, 1.5);
+    for (const i of idx) {  // головки + общий штиль
+      const ys = [];
+      for (const v of vs) if (PAT[v.key][i]) {
+        head(X0 + i * DX, v.y, v.xhead, v.hollow);
+        ys.push(v.y);
+      }
+      const y0 = up ? Math.max(...ys) - 3 : Math.min(...ys) + 3;
+      line(sx(i), y0, sx(i), tip, 1.5);
     }
 
-    if (v.beams ?? BEAMS16) {  // вязки/флажки (у HH singleBeam — одна вязка на долю); false = четвертые
+    if (beams) {  // вязки/флажки (при singleBeam — одна вязка на долю); false = четвертые
       if (idx.length === 1) {
         flag16(sx(idx[0]), tip, up);
       } else {
@@ -148,7 +154,7 @@ function renderVoice(v) {
           sy2 = tip - 2 * BEAM_H - BEAM_GAP;
         }
         // вторая (шестнадцатая) вязка: сегменты между соседними нотами, отростки к паузам
-        if (!v.singleBeam) {
+        if (!singleBeam) {
           for (let k = 0; k < idx.length; k++) {
             const i = idx[k];
             const leftC = k > 0 && idx[k - 1] === i - 1;
@@ -165,7 +171,7 @@ function renderVoice(v) {
 
     // шестнадцатые паузы на пустых позициях доли
     if (SHOW_RESTS) for (let i = beat * 4; i < beat * 4 + 4; i++) {
-      if (!pat[i]) rest16(X0 + i * DX + v.restDx, v.restY);
+      if (!vs.some(v => PAT[v.key][i])) rest16(X0 + i * DX + vs[0].restDx, vs[0].restY);
     }
   }
 }
@@ -180,7 +186,7 @@ for (let i = 0; i < N; i++) {
   text(X0 + i * DX, 72, lab, 10.5, "#555", "middle", i % 4 === 0, "Arial, sans-serif");
 }
 
-for (const top of STAVES) {                          // два стана
+for (const top of STAVES) {                          // единый стан
   for (let i = 0; i < 5; i++) line(25, top + i * S, X_END, top + i * S, 1.0);
   line(25, top, 25, top + 4 * S, 1.4);               // начальная тактовая черта
   line(X_END - 9, top, X_END - 9, top + 4 * S, 1.2); // финальная тонкая
@@ -195,7 +201,8 @@ for (const top of STAVES) {                          // два стана
   text(64, top + 3.7 * S, "4", 23, "#000", "middle", true);
 }
 
-for (const v of VOICES) renderVoice(v);
+renderGroup([VOICES[0], VOICES[1]]);  // HH + SN: общие штили при совпадении
+renderGroup([VOICES[2]]);             // BD: штили вниз
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${parts.join("\n")}\n</svg>\n`;
 fs.writeFileSync(OUT, svg, "utf8");
